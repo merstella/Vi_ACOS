@@ -19,6 +19,7 @@ SPLIT_MAP = {
 SENTIMENT_MAP = {
     "TIÊU_CỰC": 0,
     "TRUNG_TÍNH": 1,
+    "TRUNG_LẬP": 1,
     "TÍCH_CỰC": 2,
 }
 
@@ -40,6 +41,7 @@ def normalize_sentiment(sentiment):
     alt = {
         "TIEU_CUC": 0,
         "TRUNG_TINH": 1,
+        "TRUNG_LAP": 1,
         "TICH_CUC": 2,
     }
     if no_accent in alt:
