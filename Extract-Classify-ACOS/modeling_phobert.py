@@ -13,6 +13,7 @@ from transformers import AutoConfig, AutoModel
 class PhoBertForQuadABSA(nn.Module):
     def __init__(self, config, num_labels=2):
         super(PhoBertForQuadABSA, self).__init__()
+        self.config = config
         self.num_labels = [num_labels, 2]
         self.bert = AutoModel.from_config(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -92,6 +93,7 @@ class PhoBertForQuadABSA(nn.Module):
 class PhoBertForCategorySentiClassification(nn.Module):
     def __init__(self, config, num_labels=2):
         super(PhoBertForCategorySentiClassification, self).__init__()
+        self.config = config
         self.num_labels = [num_labels, 2]
         self.bert = AutoModel.from_config(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
