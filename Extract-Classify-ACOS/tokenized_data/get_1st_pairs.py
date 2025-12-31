@@ -6,6 +6,7 @@ import sys
 
 base_dir = sys.argv[1]
 domian_type = sys.argv[2]
+data_dir = sys.argv[3] if len(sys.argv) > 3 else None
 
 cur_dir = base_dir+'/output/Extract-Classify-QUAD/'+domian_type
 
@@ -13,7 +14,21 @@ if not os.path.exists(cur_dir+'_1st'):
     os.makedirs(cur_dir+'_1st')
 
 f = cs.open(cur_dir+'_1st'+'/pred4pipeline.txt', 'r').readlines()
-wf = cs.open(base_dir+'/ACOS-main/Extract-Classify-ACOS/tokenized_data/'+domian_type+'_test_pair_1st.tsv', 'w')
+if data_dir is None:
+    candidates = [
+        os.path.join(base_dir, 'Extract-Classify-ACOS', 'tokenized_data'),
+        os.path.join(base_dir, 'ACOS-main', 'Extract-Classify-ACOS', 'tokenized_data'),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tokenized_data'),
+        os.path.join(base_dir, 'tokenized_data'),
+    ]
+    for cand in candidates:
+        if os.path.isdir(cand):
+            data_dir = cand
+            break
+if data_dir is None:
+    data_dir = os.path.join(base_dir, 'tokenized_data')
+
+wf = cs.open(os.path.join(data_dir, domian_type+'_test_pair_1st.tsv'), 'w')
 
 for line in f:
     asp = []; opi = []

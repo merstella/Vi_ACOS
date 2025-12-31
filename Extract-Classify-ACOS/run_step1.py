@@ -128,6 +128,17 @@ def main():
                         default=5e-5,
                         type=float,
                         help="The initial learning rate for Adam.")
+    parser.add_argument("--early_stop",
+                        action='store_true',
+                        help="Enable early stopping on dev micro-F1.")
+    parser.add_argument("--patience",
+                        default=3,
+                        type=int,
+                        help="Epochs with no improvement before stopping.")
+    parser.add_argument("--min_delta",
+                        default=0.0,
+                        type=float,
+                        help="Minimum micro-F1 improvement to reset patience.")
     parser.add_argument("--num_train_epochs",
                         default=3.0,
                         type=float,
@@ -399,6 +410,7 @@ def main():
                                 t_total=num_train_optimization_steps)
 
         max_macro_F1 = -1.0
+        no_improve = 0
 
         for _e in trange(int(args.num_train_epochs), desc="Epoch"):
             model.train()
@@ -449,7 +461,8 @@ def main():
             model.eval()
             result = pred_eval(_e, args, logger, tokenizer, model, valid_dataloader, valid_gold, label_list, device, task_name, eval_type='valid')
 
-            if max_macro_F1 < result['micro-F1']:
+            improved = result['micro-F1'] > (max_macro_F1 + args.min_delta)
+            if improved:
                 model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
                 dirs_name = args.output_dir
                 if not os.path.exists(dirs_name):
@@ -463,6 +476,12 @@ def main():
 
                 final_result = pred_eval(_e, args, logger, tokenizer, model, eval_dataloader, eval_gold, label_list, device, task_name, eval_type='test')
                 max_macro_F1 = result['micro-F1']
+                no_improve = 0
+            else:
+                no_improve += 1
+                if args.early_stop and no_improve >= args.patience:
+                    logger.info("Early stopping at epoch %s", str(_e))
+                    break
 
     else:
         model = model_dict[args.model_type].from_pretrained(args.bert_model, num_labels=num_labels)
