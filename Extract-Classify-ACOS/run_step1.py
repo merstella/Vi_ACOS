@@ -42,8 +42,8 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn import CrossEntropyLoss, MSELoss, MultiLabelSoftMarginLoss, BCEWithLogitsLoss
 
-from modeling import BertForQuadABSA
-from bert_utils.tokenization import BertTokenizer
+from modeling_phobert import PhoBertForQuadABSA
+from transformers import AutoTokenizer
 from bert_utils.optimization import BertAdam, WarmupLinearSchedule
 
 from run_classifier_dataset_utils import *
@@ -213,14 +213,14 @@ def main():
     processor = processors[task_name]()
     output_mode = output_modes[task_name]
 
-    label_list = processor.get_labels(args.domain_type)
+    label_list = processor.get_labels(args.domain_type, args.data_dir)
     num_labels = len(label_list[1])
 
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_model, use_fast=False)
     model_dict = {
-        'quad': BertForQuadABSA,
+        'quad': PhoBertForQuadABSA,
     }
 
     label_map_senti = {label : i for i, label in enumerate(label_list[0])}

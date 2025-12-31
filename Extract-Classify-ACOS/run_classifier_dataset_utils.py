@@ -114,7 +114,7 @@ class DataProcessor(object):
         """Gets a collection of `InputExample`s for the dev set."""
         raise NotImplementedError()
 
-    def get_labels(self):
+    def get_labels(self, data_dir=None):
         """Gets the list of labels for this data set."""
         raise NotImplementedError()
 
@@ -155,7 +155,7 @@ class QuadProcessor(DataProcessor):
         return self._create_examples(
             self._read_tsv(os.path.join(data_dir, "tokenized_data/"+string+"_test_quad_bert.tsv")), "test")
 
-    def get_labels(self, domain_type):
+    def get_labels(self, domain_type, data_dir=None):
         """See base class."""
 
         sentiment = ['negative', 'neutral', 'positive']
@@ -184,6 +184,20 @@ class QuadProcessor(DataProcessor):
         return examples
 
 
+def _load_category_list(domain_type, data_dir):
+    if data_dir:
+        path = os.path.join(data_dir, "tokenized_data", "{}_categories.txt".format(domain_type))
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return [line.strip() for line in f if line.strip()]
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base_dir, "tokenized_data", "{}_categories.txt".format(domain_type))
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    return None
+
+
 class CategorySentiProcessor(DataProcessor):
     """Processor for the MRPC data set (GLUE version)."""
 
@@ -207,7 +221,7 @@ class CategorySentiProcessor(DataProcessor):
         return self._create_examples(
             self._read_tsv(os.path.join(data_dir, "tokenized_data/"+string+"_test_pair_1st.tsv")), "test")
 
-    def get_labels(self, domain_type):
+    def get_labels(self, domain_type, data_dir=None):
         """See base class."""
         l = None
         sentiment = None
@@ -238,6 +252,10 @@ class CategorySentiProcessor(DataProcessor):
             'CPU#DESIGN_FEATURES', 'PORTS#OPERATION_PERFORMANCE', 'SOFTWARE#OPERATION_PERFORMANCE', 'KEYBOARD#GENERAL', 'SOFTWARE#QUALITY', 
             'LAPTOP#CONNECTIVITY', 'POWER_SUPPLY#DESIGN_FEATURES', 'HARDWARE#OPERATION_PERFORMANCE', 'WARRANTY#QUALITY', 'HARD_DISC#QUALITY', 
             'POWER_SUPPLY#OPERATION_PERFORMANCE', 'PORTS#DESIGN_FEATURES', 'Out_Of_Scope#USABILITY']
+        else:
+            l = _load_category_list(domain_type, data_dir)
+            if not l:
+                raise ValueError("Unknown domain_type '{}'; missing categories file.".format(domain_type))
         sentiment = ['0', '1', '2']
         label_list = []
         # label_list.append(l)
@@ -308,7 +326,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
         aspect_tokens = []
         aspect_segment_ids = []
 
-        aspect_tokens.append("[CLS]")
+        cls_token = tokenizer.cls_token or "[CLS]"
+        sep_token = tokenizer.sep_token or "[SEP]"
+
+        aspect_tokens.append(cls_token)
         aspect_ids.append(label_map_seq['[CLS]'])
         aspect_segment_ids.append(0)
 
@@ -317,7 +338,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
             aspect_ids.append(label_map_seq[aspect_labels[i]])
             aspect_segment_ids.append(0)
             
-        aspect_tokens.append("[CLS]")
+        aspect_tokens.append(sep_token)
         tokens_len = len(aspect_tokens)
 
         aspect_ids.append(label_map_seq['[CLS]'])
@@ -411,13 +432,16 @@ def convert_examples_to_features2nd(examples, label_list, max_seq_length,
         aspect_tokens = []
         aspect_segment_ids = []
 
-        aspect_tokens.append("[CLS]")
+        cls_token = tokenizer.cls_token or "[CLS]"
+        sep_token = tokenizer.sep_token or "[SEP]"
+
+        aspect_tokens.append(cls_token)
         aspect_segment_ids.append(0)
 
         for i, token in enumerate(bert_tokens_a):
             aspect_tokens.append(token)
             aspect_segment_ids.append(0)
-        aspect_tokens.append("[CLS]")
+        aspect_tokens.append(sep_token)
         tokens_len = len(aspect_tokens)
         aspect_segment_ids.append(0)
 

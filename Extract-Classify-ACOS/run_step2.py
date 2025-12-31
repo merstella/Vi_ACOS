@@ -25,11 +25,11 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.nn import CrossEntropyLoss, MSELoss, MultiLabelSoftMarginLoss, BCEWithLogitsLoss
 
-from modeling import CategorySentiClassification
+from modeling_phobert import PhoBertForCategorySentiClassification
 
 # sys.path.insert(0, '/home/hjcai/8RTX/BERT/pytorch_pretrained_BERT')
 # from modeling_for_share import BertForQuadABSAPairCSAO
-from bert_utils.tokenization import BertTokenizer
+from transformers import AutoTokenizer
 from bert_utils.optimization import BertAdam, WarmupLinearSchedule
 
 from run_classifier_dataset_utils import *
@@ -150,12 +150,12 @@ def main():
     
     task_name = args.task_name.lower()
     processor = processors[task_name]()
-    label_list = processor.get_labels(args.domain_type)
+    label_list = processor.get_labels(args.domain_type, args.data_dir)
     num_labels = len(label_list[0])
 
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_model, use_fast=False)
     model_dict = {
-        'categorysenti': CategorySentiClassification,
+        'categorysenti': PhoBertForCategorySentiClassification,
     }
     cate_dict = {label : i for i, label in enumerate(label_list[0])}
 

@@ -4,13 +4,12 @@ import codecs as cs
 import os
 import sys
 import pdb
-sys.path.insert(0, '/mnt/nfs-storage-titan/BERT/pytorch_pretrained_BERT')
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+from transformers import AutoTokenizer
 
 def read_pair_gold(f, args):
     # key: text + aspect span + opinion span; value: corresponding category-sentiment type number
 
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_model, use_fast=False)
     quad_text = []
     quad_gold = []
     for line in f:
@@ -32,7 +31,7 @@ def read_pair_gold(f, args):
 
 def read_triplet_gold(f, args):
     # key: text + aspect span + opinion span + sentiment type; value: corresponding category type number
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    tokenizer = AutoTokenizer.from_pretrained(args.bert_model, use_fast=False)
     quad_text = []
     quad_gold = []
     for line in f:

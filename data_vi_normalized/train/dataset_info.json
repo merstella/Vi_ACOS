@@ -1,0 +1,68 @@
+{
+  "builder_name": "json",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "3190-data",
+  "dataset_size": 4635632,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/vohuutridung/3190-data@d4f4b293f8e927a4c9b0ae4a6814811a027932b6/train.jsonl": {
+      "num_bytes": 6105495,
+      "checksum": null
+    },
+    "hf://datasets/vohuutridung/3190-data@d4f4b293f8e927a4c9b0ae4a6814811a027932b6/validation.jsonl": {
+      "num_bytes": 188325,
+      "checksum": null
+    },
+    "hf://datasets/vohuutridung/3190-data@d4f4b293f8e927a4c9b0ae4a6814811a027932b6/test.jsonl": {
+      "num_bytes": 395060,
+      "checksum": null
+    }
+  },
+  "download_size": 6688880,
+  "features": {
+    "text": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "labels": {
+      "feature": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "_type": "List"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 11324512,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 4232130,
+      "num_examples": 10000,
+      "dataset_name": "3190-data"
+    },
+    "validation": {
+      "name": "validation",
+      "num_bytes": 130437,
+      "num_examples": 300,
+      "dataset_name": "3190-data"
+    },
+    "test": {
+      "name": "test",
+      "num_bytes": 273065,
+      "num_examples": 597,
+      "dataset_name": "3190-data"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}
