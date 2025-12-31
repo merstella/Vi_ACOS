@@ -3,7 +3,7 @@
 import argparse
 import os
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from datasets import load_from_disk
 from transformers import AutoTokenizer
@@ -82,6 +82,37 @@ def find_spans(tokens, phrase_tokens):
     return spans
 
 
+def normalize_bpe_token(token):
+    token = token.replace("@@", "")
+    token = token.replace("▁", "")
+    token = token.replace("_", "")
+    token = token.lower()
+    return "".join(ch for ch in token if ch.isalnum())
+
+
+def normalize_tokens_with_map(tokens):
+    norm_tokens = []
+    norm_map = []
+    for i, tok in enumerate(tokens):
+        norm = normalize_bpe_token(tok)
+        if norm:
+            norm_tokens.append(norm)
+            norm_map.append(i)
+    return norm_tokens, norm_map
+
+
+def find_spans_normalized(tokens, phrase_tokens):
+    norm_tokens, norm_map = normalize_tokens_with_map(tokens)
+    norm_phrase, _ = normalize_tokens_with_map(phrase_tokens)
+    if not norm_phrase:
+        return []
+    norm_spans = find_spans(norm_tokens, norm_phrase)
+    spans = []
+    for start, end in norm_spans:
+        spans.append((norm_map[start], norm_map[end - 1] + 1))
+    return spans
+
+
 def choose_closest_span(aspect_spans, opinion_spans):
     best = None
     best_pair = (None, None)
@@ -144,6 +175,10 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer):
 
     missing_aspect = 0
     missing_opinion = 0
+    explicit_aspect = 0
+    explicit_opinion = 0
+    missing_aspect_phrases = Counter()
+    missing_opinion_phrases = Counter()
     phrase_tokenizer = build_phrase_cache(tokenizer)
     categories = set()
 
@@ -174,29 +209,39 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer):
                 opinion_candidates = []
 
                 if not is_implicit(aspect):
+                    explicit_aspect += 1
                     aspect_word_tokens, aspect_bpe_tokens = phrase_tokenizer(aspect)
                     aspect_bpe_spans = find_spans(bpe_tokens, aspect_bpe_tokens)
                     if aspect_bpe_spans:
                         aspect_candidates = aspect_bpe_spans
                     else:
-                        aspect_norm = [normalize_token(t) for t in aspect_word_tokens]
-                        aspect_word_spans = find_spans(word_tokens_norm, aspect_norm)
-                        for span in aspect_word_spans:
-                            mapped = map_word_span_to_bpe(span, word_to_bpe)
-                            if mapped[0] >= 0:
-                                aspect_candidates.append(mapped)
+                        aspect_bpe_spans = find_spans_normalized(bpe_tokens, aspect_bpe_tokens)
+                        if aspect_bpe_spans:
+                            aspect_candidates = aspect_bpe_spans
+                        else:
+                            aspect_norm = [normalize_token(t) for t in aspect_word_tokens]
+                            aspect_word_spans = find_spans(word_tokens_norm, aspect_norm)
+                            for span in aspect_word_spans:
+                                mapped = map_word_span_to_bpe(span, word_to_bpe)
+                                if mapped[0] >= 0:
+                                    aspect_candidates.append(mapped)
                 if not is_implicit(opinion):
+                    explicit_opinion += 1
                     opinion_word_tokens, opinion_bpe_tokens = phrase_tokenizer(opinion)
                     opinion_bpe_spans = find_spans(bpe_tokens, opinion_bpe_tokens)
                     if opinion_bpe_spans:
                         opinion_candidates = opinion_bpe_spans
                     else:
-                        opinion_norm = [normalize_token(t) for t in opinion_word_tokens]
-                        opinion_word_spans = find_spans(word_tokens_norm, opinion_norm)
-                        for span in opinion_word_spans:
-                            mapped = map_word_span_to_bpe(span, word_to_bpe)
-                            if mapped[0] >= 0:
-                                opinion_candidates.append(mapped)
+                        opinion_bpe_spans = find_spans_normalized(bpe_tokens, opinion_bpe_tokens)
+                        if opinion_bpe_spans:
+                            opinion_candidates = opinion_bpe_spans
+                        else:
+                            opinion_norm = [normalize_token(t) for t in opinion_word_tokens]
+                            opinion_word_spans = find_spans(word_tokens_norm, opinion_norm)
+                            for span in opinion_word_spans:
+                                mapped = map_word_span_to_bpe(span, word_to_bpe)
+                                if mapped[0] >= 0:
+                                    opinion_candidates.append(mapped)
 
                 if aspect_candidates and opinion_candidates:
                     aspect_span, opinion_span = choose_closest_span(aspect_candidates, opinion_candidates)
@@ -212,8 +257,10 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer):
 
                 if not aspect_candidates and not is_implicit(aspect):
                     missing_aspect += 1
+                    missing_aspect_phrases[normalize_text(aspect).strip()] += 1
                 if not opinion_candidates and not is_implicit(opinion):
                     missing_opinion += 1
+                    missing_opinion_phrases[normalize_text(opinion).strip()] += 1
 
                 bpe_aspect = aspect_span if aspect_span is not None else (-1, -1)
                 bpe_opinion = opinion_span if opinion_span is not None else (-1, -1)
@@ -238,7 +285,15 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer):
                 label_str = " ".join(sorted(labels))
                 pair_f.write("{}####{} {}\t{}\n".format(token_str, aspect_str, opinion_str, label_str))
 
-    return categories, missing_aspect, missing_opinion
+    return (
+        categories,
+        missing_aspect,
+        missing_opinion,
+        explicit_aspect,
+        explicit_opinion,
+        missing_aspect_phrases,
+        missing_opinion_phrases,
+    )
 
 
 def main():
@@ -247,6 +302,7 @@ def main():
     parser.add_argument("--out_dir", required=True, help="Output directory for tokenized_data")
     parser.add_argument("--domain", default="vi", help="Domain name for output files")
     parser.add_argument("--phobert_model", default="vinai/phobert-base", help="Model name or path")
+    parser.add_argument("--report_top_k", type=int, default=20, help="Top-k missing phrases to report (0 to disable)")
     args = parser.parse_args()
 
     dataset = load_from_disk(args.data_dir)
@@ -255,14 +311,22 @@ def main():
     all_categories = set()
     total_missing_aspect = 0
     total_missing_opinion = 0
+    total_explicit_aspect = 0
+    total_explicit_opinion = 0
+    missing_aspect_phrases = Counter()
+    missing_opinion_phrases = Counter()
 
     for split in dataset.keys():
-        categories, miss_a, miss_o = process_split(
+        categories, miss_a, miss_o, exp_a, exp_o, miss_a_phrases, miss_o_phrases = process_split(
             dataset[split], split, args.out_dir, args.domain, tokenizer
         )
         all_categories.update(categories)
         total_missing_aspect += miss_a
         total_missing_opinion += miss_o
+        total_explicit_aspect += exp_a
+        total_explicit_opinion += exp_o
+        missing_aspect_phrases.update(miss_a_phrases)
+        missing_opinion_phrases.update(miss_o_phrases)
 
     categories_path = os.path.join(args.out_dir, "{}_categories.txt".format(args.domain))
     with open(categories_path, "w", encoding="utf-8") as f:
@@ -270,8 +334,17 @@ def main():
             f.write(cate + "\n")
 
     print("Done. categories =", len(all_categories))
-    print("Missing aspect spans =", total_missing_aspect)
-    print("Missing opinion spans =", total_missing_opinion)
+    aspect_ratio = 0.0 if total_explicit_aspect == 0 else total_missing_aspect / total_explicit_aspect
+    opinion_ratio = 0.0 if total_explicit_opinion == 0 else total_missing_opinion / total_explicit_opinion
+    print("Missing aspect spans = {} / {} ({:.2%})".format(
+        total_missing_aspect, total_explicit_aspect, aspect_ratio
+    ))
+    print("Missing opinion spans = {} / {} ({:.2%})".format(
+        total_missing_opinion, total_explicit_opinion, opinion_ratio
+    ))
+    if args.report_top_k and args.report_top_k > 0:
+        print("Top missing aspect phrases:", missing_aspect_phrases.most_common(args.report_top_k))
+        print("Top missing opinion phrases:", missing_opinion_phrases.most_common(args.report_top_k))
 
 
 if __name__ == "__main__":
