@@ -3,7 +3,7 @@
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
-from torchcrf import CRF
+from TorchCRF import CRF
 from transformers import AutoConfig, AutoModel
 
 
