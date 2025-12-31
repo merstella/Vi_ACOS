@@ -58,6 +58,10 @@ def is_implicit(text):
     return raw.upper() in {"NULL", "NONE", "N/A", "NA", "NA.", "_", "-"}
 
 
+def normalize_text(text):
+    return unicodedata.normalize("NFC", text or "")
+
+
 def vn_tokenize(text):
     tokenized = ViTokenizer.tokenize(text or "")
     return tokenized.split()
@@ -116,15 +120,17 @@ def map_word_span_to_bpe(span, word_to_bpe):
     return (bpe_start, bpe_end)
 
 
-def build_phrase_cache():
+def build_phrase_cache(tokenizer):
     cache = {}
 
     def _get_tokens(phrase):
+        phrase = normalize_text(phrase)
         if phrase in cache:
             return cache[phrase]
-        tokens = vn_tokenize(phrase)
-        cache[phrase] = tokens
-        return tokens
+        word_tokens = vn_tokenize(phrase)
+        bpe_tokens, _ = bpe_tokenize_words(word_tokens, tokenizer)
+        cache[phrase] = (word_tokens, bpe_tokens)
+        return cache[phrase]
 
     return _get_tokens
 
@@ -138,12 +144,12 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer):
 
     missing_aspect = 0
     missing_opinion = 0
-    phrase_tokenizer = build_phrase_cache()
+    phrase_tokenizer = build_phrase_cache(tokenizer)
     categories = set()
 
     with open(quad_path, "w", encoding="utf-8") as quad_f, open(pair_path, "w", encoding="utf-8") as pair_f:
         for idx, example in enumerate(dataset):
-            text = example.get("text", "")
+            text = normalize_text(example.get("text", ""))
             quads = example.get("labels", []) or []
 
             word_tokens = vn_tokenize(text)
@@ -164,36 +170,53 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer):
                 aspect_span = None
                 opinion_span = None
 
+                aspect_candidates = []
+                opinion_candidates = []
+
                 if not is_implicit(aspect):
-                    aspect_tokens = phrase_tokenizer(aspect)
-                    aspect_norm = [normalize_token(t) for t in aspect_tokens]
-                    aspect_spans = find_spans(word_tokens_norm, aspect_norm)
-                else:
-                    aspect_spans = []
-
+                    aspect_word_tokens, aspect_bpe_tokens = phrase_tokenizer(aspect)
+                    aspect_bpe_spans = find_spans(bpe_tokens, aspect_bpe_tokens)
+                    if aspect_bpe_spans:
+                        aspect_candidates = aspect_bpe_spans
+                    else:
+                        aspect_norm = [normalize_token(t) for t in aspect_word_tokens]
+                        aspect_word_spans = find_spans(word_tokens_norm, aspect_norm)
+                        for span in aspect_word_spans:
+                            mapped = map_word_span_to_bpe(span, word_to_bpe)
+                            if mapped[0] >= 0:
+                                aspect_candidates.append(mapped)
                 if not is_implicit(opinion):
-                    opinion_tokens = phrase_tokenizer(opinion)
-                    opinion_norm = [normalize_token(t) for t in opinion_tokens]
-                    opinion_spans = find_spans(word_tokens_norm, opinion_norm)
-                else:
-                    opinion_spans = []
+                    opinion_word_tokens, opinion_bpe_tokens = phrase_tokenizer(opinion)
+                    opinion_bpe_spans = find_spans(bpe_tokens, opinion_bpe_tokens)
+                    if opinion_bpe_spans:
+                        opinion_candidates = opinion_bpe_spans
+                    else:
+                        opinion_norm = [normalize_token(t) for t in opinion_word_tokens]
+                        opinion_word_spans = find_spans(word_tokens_norm, opinion_norm)
+                        for span in opinion_word_spans:
+                            mapped = map_word_span_to_bpe(span, word_to_bpe)
+                            if mapped[0] >= 0:
+                                opinion_candidates.append(mapped)
 
-                if aspect_spans and opinion_spans:
-                    aspect_span, opinion_span = choose_closest_span(aspect_spans, opinion_spans)
-                elif aspect_spans:
-                    aspect_span = aspect_spans[0]
+                if aspect_candidates and opinion_candidates:
+                    aspect_span, opinion_span = choose_closest_span(aspect_candidates, opinion_candidates)
+                elif aspect_candidates:
+                    aspect_span = aspect_candidates[0]
                     opinion_span = None
-                elif opinion_spans:
-                    opinion_span = opinion_spans[0]
+                elif opinion_candidates:
+                    opinion_span = opinion_candidates[0]
                     aspect_span = None
+                else:
+                    aspect_span = None
+                    opinion_span = None
 
-                if not aspect_spans and not is_implicit(aspect):
+                if not aspect_candidates and not is_implicit(aspect):
                     missing_aspect += 1
-                if not opinion_spans and not is_implicit(opinion):
+                if not opinion_candidates and not is_implicit(opinion):
                     missing_opinion += 1
 
-                bpe_aspect = map_word_span_to_bpe(aspect_span, word_to_bpe)
-                bpe_opinion = map_word_span_to_bpe(opinion_span, word_to_bpe)
+                bpe_aspect = aspect_span if aspect_span is not None else (-1, -1)
+                bpe_opinion = opinion_span if opinion_span is not None else (-1, -1)
 
                 aspect_str = "{},{}".format(bpe_aspect[0], bpe_aspect[1])
                 opinion_str = "{},{}".format(bpe_opinion[0], bpe_opinion[1])
