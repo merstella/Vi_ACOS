@@ -3,7 +3,10 @@
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
-from TorchCRF import CRF
+try:
+    from torchcrf import CRF
+except Exception:
+    from TorchCRF import CRF
 from transformers import AutoConfig, AutoModel
 
 
@@ -15,7 +18,12 @@ class PhoBertForQuadABSA(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.crf_num = 6
 
-        self.crf = CRF(self.crf_num, batch_first=True)
+        self.crf_batch_first = True
+        try:
+            self.crf = CRF(self.crf_num, batch_first=True)
+        except TypeError:
+            self.crf = CRF(self.crf_num)
+            self.crf_batch_first = False
         self.dense_output = nn.Sequential(
             nn.Dropout(config.hidden_dropout_prob),
             nn.Linear(config.hidden_size, self.crf_num),
@@ -61,8 +69,21 @@ class PhoBertForQuadABSA(nn.Module):
         max_seq_len = aspect_input_ids.size()[1]
         sequence_output = self.dense_output(sequence_output)
         sequence_output = sequence_output.view(-1, max_seq_len, self.crf_num)
-        ae_loss = -self.crf(sequence_output, aspect_labels, mask=aspect_attention_mask.byte(), reduction='mean')
-        pred_tags = self.crf.decode(sequence_output, mask=aspect_attention_mask.byte())
+        crf_mask = aspect_attention_mask.byte()
+        crf_tags = aspect_labels
+        crf_inputs = sequence_output
+        if not self.crf_batch_first:
+            crf_inputs = crf_inputs.transpose(0, 1)
+            crf_tags = crf_tags.transpose(0, 1)
+            crf_mask = crf_mask.transpose(0, 1)
+        try:
+            ae_ll = self.crf(crf_inputs, crf_tags, mask=crf_mask, reduction='mean')
+        except TypeError:
+            ae_ll = self.crf(crf_inputs, crf_tags, mask=crf_mask)
+            if ae_ll.dim() > 0:
+                ae_ll = ae_ll.mean()
+        ae_loss = -ae_ll
+        pred_tags = self.crf.decode(crf_inputs, mask=crf_mask)
 
         total_loss = ae_loss + imp_aspect_loss + imp_opinion_loss
         return [total_loss], [pred_tags, imp_aspect_exist, imp_opinion_exist]

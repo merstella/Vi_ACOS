@@ -470,13 +470,26 @@ def convert_examples_to_features2nd(examples, label_list, max_seq_length,
         cur_aspect = ao_tags.split()[0]; cur_opinion = ao_tags.split()[1]
         a_st = int(cur_aspect.split(',')[0]); a_ed = int(cur_aspect.split(',')[1])
         o_st = int(cur_opinion.split(',')[0]); o_ed = int(cur_opinion.split(',')[1])
+        max_token_end = max_seq_length - 2
         if a_st == -1:
             a_ed = 0
+            aspect_range = range(a_st+1, a_ed+1)
+        elif a_st < max_token_end:
+            a_ed = min(a_ed, max_token_end)
+            aspect_range = range(a_st+1, a_ed+1)
+        else:
+            aspect_range = []
         if o_st == -1:
             o_st = imp_opinion_pos - 2; o_ed = imp_opinion_pos - 1
-        for i in range(a_st+1, a_ed+1):
+            opinion_range = range(o_st+1, o_ed+1)
+        elif o_st < max_token_end:
+            o_ed = min(o_ed, max_token_end)
+            opinion_range = range(o_st+1, o_ed+1)
+        else:
+            opinion_range = []
+        for i in aspect_range:
             candidate_aspect[i] = 1
-        for i in range(o_st+1, o_ed+1):
+        for i in opinion_range:
             candidate_opinion[i] = 1
         if len(labels) > 0:
             for ele in labels[0].split():

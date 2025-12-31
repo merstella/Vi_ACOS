@@ -245,18 +245,24 @@ def main():
                 a_st = int(cur_aspect.split(',')[0]); a_ed = int(cur_aspect.split(',')[1])
                 
                 if a_ed != -1:
-                    aspect_labels[a_st] = label_map_seq['B-A']
-                    for i in range(a_st+1, a_ed):
-                        aspect_labels[i] = label_map_seq['I-A']
+                    if 0 <= a_st < args.max_seq_length:
+                        a_ed = min(a_ed, args.max_seq_length)
+                        aspect_labels[a_st] = label_map_seq['B-A']
+                        for i in range(a_st+1, a_ed):
+                            if i < args.max_seq_length:
+                                aspect_labels[i] = label_map_seq['I-A']
                 else:
                     cur_exist_imp_aspect = 1
 
                 o_st = int(cur_opinion.split(',')[0]); o_ed = int(cur_opinion.split(',')[1])
                 
                 if o_ed != -1:
-                    aspect_labels[o_st] = label_map_seq['B-O']
-                    for i in range(o_st+1, o_ed):
-                        aspect_labels[i] = label_map_seq['I-O']
+                    if 0 <= o_st < args.max_seq_length:
+                        o_ed = min(o_ed, args.max_seq_length)
+                        aspect_labels[o_st] = label_map_seq['B-O']
+                        for i in range(o_st+1, o_ed):
+                            if i < args.max_seq_length:
+                                aspect_labels[i] = label_map_seq['I-O']
                 else:
                     cur_exist_imp_opinion = 1
 
