@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from datasets import load_from_disk
 from transformers import AutoTokenizer
-from vncorenlp import VnCoreNLP
+from pyvi import ViTokenizer
 
 
 SPLIT_MAP = {
@@ -56,11 +56,9 @@ def is_implicit(text):
     return raw.upper() in {"NULL", "NONE", "N/A", "NA", "NA.", "_", "-"}
 
 
-def vn_tokenize(text, annotator):
-    tokens = []
-    for sent in annotator.tokenize(text):
-        tokens.extend(sent)
-    return tokens
+def vn_tokenize(text):
+    tokenized = ViTokenizer.tokenize(text or "")
+    return tokenized.split()
 
 
 def normalize_token(token):
@@ -116,20 +114,20 @@ def map_word_span_to_bpe(span, word_to_bpe):
     return (bpe_start, bpe_end)
 
 
-def build_phrase_cache(annotator):
+def build_phrase_cache():
     cache = {}
 
     def _get_tokens(phrase):
         if phrase in cache:
             return cache[phrase]
-        tokens = vn_tokenize(phrase, annotator)
+        tokens = vn_tokenize(phrase)
         cache[phrase] = tokens
         return tokens
 
     return _get_tokens
 
 
-def process_split(dataset, split_name, out_dir, domain, tokenizer, annotator):
+def process_split(dataset, split_name, out_dir, domain, tokenizer):
     split_key = SPLIT_MAP.get(split_name, split_name)
     quad_path = os.path.join(out_dir, "{}_{}_quad_bert.tsv".format(domain, split_key))
     pair_path = os.path.join(out_dir, "{}_{}_pair.tsv".format(domain, split_key))
@@ -138,7 +136,7 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer, annotator):
 
     missing_aspect = 0
     missing_opinion = 0
-    phrase_tokenizer = build_phrase_cache(annotator)
+    phrase_tokenizer = build_phrase_cache()
     categories = set()
 
     with open(quad_path, "w", encoding="utf-8") as quad_f, open(pair_path, "w", encoding="utf-8") as pair_f:
@@ -146,7 +144,7 @@ def process_split(dataset, split_name, out_dir, domain, tokenizer, annotator):
             text = example.get("text", "")
             quads = example.get("labels", []) or []
 
-            word_tokens = vn_tokenize(text, annotator)
+            word_tokens = vn_tokenize(text)
             word_tokens_norm = [normalize_token(t) for t in word_tokens]
             bpe_tokens, word_to_bpe = bpe_tokenize_words(word_tokens, tokenizer)
 
@@ -224,13 +222,10 @@ def main():
     parser.add_argument("--out_dir", required=True, help="Output directory for tokenized_data")
     parser.add_argument("--domain", default="vi", help="Domain name for output files")
     parser.add_argument("--phobert_model", default="vinai/phobert-base", help="Model name or path")
-    parser.add_argument("--vncorenlp_jar", required=True, help="Path to VnCoreNLP jar")
-    parser.add_argument("--max_heap_size", default="-Xmx2g", help="Java heap size for VnCoreNLP")
     args = parser.parse_args()
 
     dataset = load_from_disk(args.data_dir)
     tokenizer = AutoTokenizer.from_pretrained(args.phobert_model, use_fast=False)
-    annotator = VnCoreNLP(args.vncorenlp_jar, annotators="wseg", max_heap_size=args.max_heap_size)
 
     all_categories = set()
     total_missing_aspect = 0
@@ -238,14 +233,11 @@ def main():
 
     for split in dataset.keys():
         categories, miss_a, miss_o = process_split(
-            dataset[split], split, args.out_dir, args.domain, tokenizer, annotator
+            dataset[split], split, args.out_dir, args.domain, tokenizer
         )
         all_categories.update(categories)
         total_missing_aspect += miss_a
         total_missing_opinion += miss_o
-
-    if hasattr(annotator, "close"):
-        annotator.close()
 
     categories_path = os.path.join(args.out_dir, "{}_categories.txt".format(args.domain))
     with open(categories_path, "w", encoding="utf-8") as f:
